@@ -41,6 +41,18 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
+    verificationToken: {
+      type: String,
+    },
+    lastActiveAt: {
+      type: Date,
+      default: Date.now,
+    },
     customEvents: [{
       date: String,
       title: String,

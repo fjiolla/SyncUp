@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, Calendar, User } from 'lucide-react'
+import { Home, Users, Calendar, User, MessageSquare } from 'lucide-react'
 import clsx from 'clsx'
 
 const navItems = [
   { name: 'Home', path: '/', icon: Home },
   { name: 'My Pods', path: '/pods', icon: Users },
   { name: 'Calendar', path: '/calendar', icon: Calendar },
+  { name: 'Messages', path: '/messages', icon: MessageSquare },
   { name: 'Profile', path: '/profile', icon: User },
 ]
 

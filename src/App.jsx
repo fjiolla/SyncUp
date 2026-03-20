@@ -4,7 +4,9 @@ import Home from './pages/Home'
 import MyPods from './pages/MyPods'
 import Calendar from './pages/Calendar'
 import Profile from './pages/Profile'
+import PublicProfile from './pages/PublicProfile'
 import PodDetails from './pages/PodDetails'
+import Messages from './pages/Messages'
 import { PodsProvider } from './context/PodsContext'
 import { AuthProvider } from './context/AuthContext'
 import { AuthModal } from './components/ui/AuthModal'
@@ -22,7 +24,9 @@ function App() {
             <Route path="/pods" element={<MyPods />} />
             <Route path="/pods/:id" element={<PodDetails />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/messages" element={<Messages />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/profile/:id" element={<PublicProfile />} />
           </Route>
         </Routes>
       </PodsProvider>

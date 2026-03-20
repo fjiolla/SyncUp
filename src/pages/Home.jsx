@@ -24,7 +24,12 @@ export default function Home() {
   const [showFilters, setShowFilters] = useState(false);
   
   // Get recommended pods
-  let recommendedActivities = pods.filter(p => !p.isJoined)
+  let recommendedActivities = [...pods];
+  
+  // If no explicit date or search is applied, filter out joined pods to act as a pure discover feed
+  if (!dateFilter && !textSearchParam) {
+     recommendedActivities = recommendedActivities.filter(p => !p.isJoined)
+  }
   if (activeFilter) {
     recommendedActivities = recommendedActivities.filter(p => 
       p.category === activeFilter || p.tags?.includes(activeFilter)

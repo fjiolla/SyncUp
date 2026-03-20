@@ -92,7 +92,10 @@ export function CreatePodModal({ isOpen, onClose, onSubmit }) {
     onSubmit({
       title: formData.title,
       description: formData.description,
-      time: `${formData.date}T${formData.time}`, 
+      category: formData.category,
+      date: formData.date,
+      time: formData.time,
+      dateTime: new Date(`${formData.date}T${formData.time}`).toISOString(),
       location: `${formData.locationExact}, ${formData.locationCity}`,
       mapLink: formData.mapLink,
       minAge: formData.minAge,

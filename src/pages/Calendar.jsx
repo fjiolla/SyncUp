@@ -19,7 +19,7 @@ const indianHolidays = [
 ];
 
 export default function Calendar() {
-  const { pods } = usePods();
+  const { pods, deletePod } = usePods();
   const { user, updateProfile, requireAuth } = useAuth();
   const navigate = useNavigate();
   
@@ -102,15 +102,20 @@ export default function Calendar() {
 
   const confirmDeleteCustomEvent = async () => {
     if (!eventToDelete) return;
-    const updatedEvents = (user.customEvents || []).filter(
-      evt => !(evt.date === eventToDelete.date && evt.title === eventToDelete.title)
-    );
     
     setIsSaving(true);
     try {
-      await updateProfile({ customEvents: updatedEvents });
-      setEventToDelete(null);
-      toast.success('Event deleted');
+      if (eventToDelete.type === 'Pod') {
+        await deletePod(eventToDelete._id);
+        setEventToDelete(null);
+      } else {
+        const updatedEvents = (user.customEvents || []).filter(
+          evt => !(evt.date === eventToDelete.date && evt.title === eventToDelete.title)
+        );
+        await updateProfile({ customEvents: updatedEvents });
+        setEventToDelete(null);
+        toast.success('Event deleted');
+      }
     } catch (error) {
       toast.error('Failed to remove event');
     } finally {
@@ -292,6 +297,7 @@ export default function Calendar() {
             
             const dayPods = pods.filter(pod => {
               if (!pod.date) return false;
+              if (pod.role !== 'organizer' && pod.role !== 'member') return false;
               const d = new Date(pod.date);
               return d.getFullYear() === currentYear && d.getMonth() === currentMonth && d.getDate() === day;
             });
@@ -346,7 +352,20 @@ export default function Calendar() {
                   ))}
 
                   {dayPods.map(pod => (
-                    <div key={pod._id} className="w-full text-[11px] font-semibold truncate bg-white border border-zinc-200/80 shadow-sm text-zinc-700 px-2 py-1.5 rounded flex items-center gap-1.5 group-hover:border-blue-200 transition-colors" title={pod.title}>
+                    <div 
+                      key={pod._id} 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Prevent opening the activeDate modal, either open delete config or navigate to feed
+                        if (pod.role === 'organizer') {
+                          setEventToDelete({ ...pod, type: 'Pod' });
+                        } else {
+                          navigate(`/?search=${encodeURIComponent(pod.title)}`);
+                        }
+                      }}
+                      className="w-full text-[11px] font-semibold truncate bg-white border border-zinc-200/80 shadow-sm text-zinc-700 px-2 py-1.5 rounded flex items-center gap-1.5 group-hover:border-blue-200 transition-colors cursor-pointer" 
+                      title={pod.role === 'organizer' ? 'Click to delete your pod' : pod.title}
+                    >
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
                       {pod.title}
                     </div>
@@ -380,7 +399,7 @@ export default function Calendar() {
                   onClick={() => handleNavigateToPods(activeDateModal)}
                   className="w-full py-2.5 bg-zinc-900 hover:bg-black text-[13px] text-white shadow-sm flex items-center justify-center gap-2"
                 >
-                  <CalendarIcon className="w-4 h-4" /> Browse SyncUp Pods
+                  <CalendarIcon className="w-4 h-4" /> Browse Pods
                 </Button>
                 <p className="text-[11px] text-zinc-500 font-medium mt-2 text-center">Search for events happening on this exact day</p>
               </div>

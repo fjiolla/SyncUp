@@ -30,9 +30,13 @@ export function PodsProvider({ children }) {
     fetchPods();
 
     // Socket Event Listeners
-    socket.on('pod_created', (newPod) => {
-      setPods((prev) => [newPod, ...prev]);
-    });
+    const handlePodCreated = (newPod) => {
+      setPods((prev) => {
+        if (prev.some(p => p._id === newPod._id)) return prev;
+        return [newPod, ...prev];
+      });
+    };
+    socket.on('pod_created', handlePodCreated);
 
     socket.on('pod_updated', (updatedPod) => {
       setPods((prev) => prev.map((p) => (p._id === updatedPod._id ? updatedPod : p)));
@@ -47,7 +51,7 @@ export function PodsProvider({ children }) {
     });
 
     return () => {
-      socket.off('pod_created');
+      socket.off('pod_created', handlePodCreated);
       socket.off('pod_updated');
       socket.off('pod_deleted');
       socket.off('live_notification');
@@ -63,15 +67,22 @@ export function PodsProvider({ children }) {
       // Calculate derived fields that the UI expects
       const urgency = pod.spotsLeft <= 2 && pod.spotsLeft > 0 ? `${pod.spotsLeft} spots left` : 
                       pod.spotsLeft === 0 ? 'Full' : null;
+      
+      const podDate = new Date(pod.dateTime || pod.date);
+      const status = podDate > new Date() ? 'active' : 'past';
 
       return {
         ...pod,
         id: pod._id, // Map MongoDB _id to id for old UI compatibility
         role: isOrganizer ? 'organizer' : isJoined ? 'member' : 'none',
         isJoined: isJoined,
+        date: pod.dateTime, // Important: explicitly map dateTime back onto date string for Home.jsx Filters
+        status: status,
         host: pod.organizer.name,
+        hostId: pod.organizer._id,
         membersCount: pod.members.length,
         avatars: pod.members.map(m => m.profilePicture),
+        membersList: pod.members.map(m => ({ id: m._id, name: m.name, profilePicture: m.profilePicture })),
         time: new Date(pod.dateTime).toLocaleString([], { weekday: 'long', hour: '2-digit', minute:'2-digit' }),
         urgency
       };

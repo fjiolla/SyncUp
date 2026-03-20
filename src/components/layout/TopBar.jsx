@@ -52,8 +52,7 @@ export default function TopBar() {
               className="relative text-zinc-400 hover:text-zinc-900 transition-colors mt-1"
             >
               <Bell className="w-[18px] h-[18px]" />
-              {/* Unread dot */}
-              <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white" />
+              {/* No unread dots since system is not hooked to backend yet */}
             </button>
             
             {isNotificationsOpen && (
@@ -69,40 +68,11 @@ export default function TopBar() {
                   </div>
                   <div className="max-h-[60vh] overflow-y-auto">
                     
-                    <div className="px-4 py-3 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Users className="w-4 h-4 text-blue-600" />
+                    <div className="px-4 py-8 text-center flex flex-col items-center justify-center">
+                      <div className="w-10 h-10 bg-zinc-50 rounded-full flex items-center justify-center mb-3">
+                        <Bell className="w-5 h-5 text-zinc-300" />
                       </div>
-                      <div className="flex-1 space-y-0.5">
-                        <p className="text-[13px] text-zinc-800 leading-snug">
-                          <span className="font-semibold text-zinc-900">Alex</span> joined your <span className="font-medium text-zinc-900">Hackathon Team</span> pod.
-                        </p>
-                        <p className="text-[11px] text-zinc-400 font-medium">2 hours ago</p>
-                      </div>
-                    </div>
-
-                    <div className="px-4 py-3 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Calendar className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div className="flex-1 space-y-0.5">
-                        <p className="text-[13px] text-zinc-800 leading-snug">
-                          <span className="font-semibold text-zinc-900">Sunset Photography Walk</span> starts in 2 hours.
-                        </p>
-                        <p className="text-[11px] text-zinc-400 font-medium">4 hours ago</p>
-                      </div>
-                    </div>
-
-                    <div className="px-4 py-3 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="text-zinc-500 text-[10px] font-bold">L</span>
-                      </div>
-                      <div className="flex-1 space-y-0.5">
-                        <p className="text-[13px] text-zinc-800 leading-snug">
-                          <span className="font-semibold text-zinc-900">Leena</span> updated the time for <span className="font-medium text-zinc-900">Saturday Badminton</span>.
-                        </p>
-                        <p className="text-[11px] text-zinc-400 font-medium">Yesterday</p>
-                      </div>
+                      <p className="text-[13px] font-medium text-zinc-500">No new notifications</p>
                     </div>
 
                   </div>
@@ -121,7 +91,7 @@ export default function TopBar() {
             
             {user ? (
               <button onClick={() => navigate('/profile')} title="View Profile" className="w-8 h-8 rounded-full border border-zinc-200 overflow-hidden hover:opacity-80 transition-opacity cursor-pointer bg-zinc-100 flex items-center justify-center">
-                {user.profilePicture ? (
+                {user.profilePicture && user.profilePicture.includes('cloudinary') ? (
                   <img src={user.profilePicture} alt={user.name} className="w-full h-full object-cover bg-white" />
                 ) : (
                   <span className="text-[11px] font-semibold text-zinc-600 tracking-wider">

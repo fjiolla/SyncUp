@@ -4,9 +4,8 @@ import { Calendar, Bell } from 'lucide-react'
 import { usePods } from '../context/PodsContext'
 
 const tabs = [
-  { id: 'active', label: 'Active' },
-  { id: 'planning', label: 'Planning' },
-  { id: 'past', label: 'Past' },
+  { id: 'active', label: 'Active Upcoming' },
+  { id: 'past', label: 'Past Events' },
 ]
 
 export default function MyPods() {
@@ -19,7 +18,11 @@ export default function MyPods() {
   }
   const filteredPods = myJoinedPods.filter(pod => pod.status === activeTab)
   const activeCount = myJoinedPods.filter(p => p.status === 'active').length
-  const planningCount = myJoinedPods.filter(p => p.status === 'planning').length
+  
+  const upcomingPods = myJoinedPods.filter(p => p.status === 'active').sort((a,b) => new Date(a.date) - new Date(b.date));
+  const nextActivityStr = upcomingPods.length > 0 
+    ? `Next: ${new Date(upcomingPods[0].date).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` 
+    : 'No upcoming activities';
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 delay-100 fill-mode-both max-w-5xl">
@@ -28,16 +31,12 @@ export default function MyPods() {
       <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between pb-2 bg-zinc-50/40 p-5 rounded-xl border border-zinc-200/80">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-zinc-900 mb-0.5">My Pods</h1>
-          <p className="text-[13px] text-zinc-500 font-medium">You have {activeCount} active pods and {planningCount} in planning.</p>
+          <p className="text-[13px] text-zinc-500 font-medium">You have {activeCount} active pods tracked ahead.</p>
         </div>
         <div className="flex items-center gap-4 text-[13px] font-medium">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-zinc-200/80 text-zinc-700 shadow-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Next activity in 2 days
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-zinc-200/80 text-zinc-700 shadow-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            3 new messages
+            <div className={`w-1.5 h-1.5 rounded-full ${upcomingPods.length > 0 ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+            {nextActivityStr}
           </div>
         </div>
       </div>

@@ -8,6 +8,11 @@ import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import podRoutes from './routes/podRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import oauthRoutes from './routes/oauthRoutes.js';
+import messageRoutes from './routes/messageRoutes.js';
+import passport from './config/passport.js';
 
 dotenv.config();
 
@@ -22,6 +27,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use(passport.initialize());
 
 // Set up HTTP Server and Socket.io
 const server = http.createServer(app);
@@ -37,10 +43,10 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`Connected client: ${socket.id}`);
 
-  // When a user joins a pod detail page
-  socket.on('join_pod_room', (podId) => {
-    socket.join(podId);
-    console.log(`User joined pod room: ${podId}`);
+  // Unified Chat Room Joiner (DMs or Pods)
+  socket.on('join_chat_room', (roomName) => {
+    socket.join(roomName);
+    console.log(`User socket joined chat space: ${roomName}`);
   });
 
   socket.on('disconnect', () => {
@@ -53,8 +59,12 @@ app.set('io', io);
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth', oauthRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/pods', podRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/', (req, res) => {
   res.send('SyncUp API is running...');

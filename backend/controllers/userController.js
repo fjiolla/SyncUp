@@ -1,5 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import User from '../models/User.js';
+import Pod from '../models/Pod.js';
 
 // @desc    Get user profile
 // @route   GET /api/users/profile
@@ -17,6 +18,10 @@ const getUserProfile = asyncHandler(async (req, res) => {
       interests: user.interests,
       profilePicture: user.profilePicture,
       customEvents: user.customEvents,
+      isVerified: user.isVerified,
+      lastActiveAt: user.lastActiveAt,
+      podsCreated: await Pod.countDocuments({ hostId: user._id }),
+      podsJoined: await Pod.countDocuments({ 'members.userId': user._id }),
     });
   } else {
     res.status(404);
@@ -53,6 +58,10 @@ const updateUserProfile = asyncHandler(async (req, res) => {
       interests: updatedUser.interests,
       profilePicture: updatedUser.profilePicture,
       customEvents: updatedUser.customEvents,
+      isVerified: updatedUser.isVerified,
+      lastActiveAt: updatedUser.lastActiveAt,
+      podsCreated: await Pod.countDocuments({ hostId: updatedUser._id }),
+      podsJoined: await Pod.countDocuments({ 'members.userId': updatedUser._id }),
     });
   } else {
     res.status(404);
@@ -66,7 +75,20 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 const getUserById = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).select('-password');
   if (user) {
-    res.json(user);
+    res.json({
+      _id: user._id,
+      name: user.name,
+      age: user.age,
+      bio: user.bio,
+      interests: user.interests,
+      profilePicture: user.profilePicture,
+      customEvents: user.customEvents,
+      isVerified: user.isVerified,
+      lastActiveAt: user.lastActiveAt,
+      createdAt: user.createdAt,
+      podsCreated: await Pod.countDocuments({ hostId: user._id }),
+      podsJoined: await Pod.countDocuments({ 'members.userId': user._id }),
+    });
   } else {
     res.status(404);
     throw new Error('User not found');

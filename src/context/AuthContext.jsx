@@ -13,15 +13,31 @@ export function AuthProvider({ children }) {
   // Initialize Auth
   useEffect(() => {
     const initAuth = async () => {
+      // Catch OAuth Redirect Tokens
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      const authFailed = urlParams.get('authFailed');
+
+      if (urlToken) {
+        localStorage.setItem('syncup_token', urlToken);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        toast.success('Successfully logged in with social provider!');
+      } else if (authFailed) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        toast.error('Social authentication failed. Please try again or use email.');
+      }
+
       const token = localStorage.getItem('syncup_token');
       if (token) {
         try {
+          const res = await api.get('/api/users/profile');
           const userData = res.data;
           if (userData.profilePicture === 'https://api.dicebear.com/7.x/initials/svg') userData.profilePicture = '';
           setUser(userData);
         } catch (error) {
           console.error('Failed to restore session', error);
           localStorage.removeItem('syncup_token');
+          setUser(null);
         }
       }
       setIsLoading(false);
