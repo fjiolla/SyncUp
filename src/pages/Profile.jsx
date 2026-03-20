@@ -15,11 +15,20 @@ export default function Profile() {
   const [connectionsCount, setConnectionsCount] = useState(0);
 
   useEffect(() => {
-    if (user) {
-      api.get('/messages/connections')
-         .then(res => setConnectionsCount(res.data.length))
-         .catch(err => console.error('Failed fetching connections:', err));
-    }
+    const refresh = () => {
+      if (user) {
+        api.get('/api/messages/connections')
+           .then(res => setConnectionsCount(res.data.length))
+           .catch(err => console.error(err));
+      }
+    };
+    refresh();
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('connections_updated', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('connections_updated', refresh);
+    };
   }, [user]);
 
   if (isLoading) {

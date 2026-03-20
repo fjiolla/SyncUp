@@ -1,6 +1,8 @@
 import asyncHandler from 'express-async-handler';
 import User from '../models/User.js';
 import Pod from '../models/Pod.js';
+import crypto from 'crypto';
+import { env } from '../config/env.js';
 
 // @desc    Get user profile
 // @route   GET /api/users/profile
@@ -19,9 +21,10 @@ const getUserProfile = asyncHandler(async (req, res) => {
       profilePicture: user.profilePicture,
       customEvents: user.customEvents,
       isVerified: user.isVerified,
+      role: user.role,
       lastActiveAt: user.lastActiveAt,
-      podsCreated: await Pod.countDocuments({ hostId: user._id }),
-      podsJoined: await Pod.countDocuments({ 'members.userId': user._id }),
+      podsCreated: await Pod.countDocuments({ organizer: user._id }),
+      podsJoined: await Pod.countDocuments({ members: user._id }),
     });
   } else {
     res.status(404);
@@ -37,10 +40,29 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 
   if (user) {
     user.name = req.body.name || user.name;
-    user.email = req.body.email || user.email;
+    let emailChanged = false;
+
+    if (req.body.email && req.body.email !== user.email) {
+      const emailTaken = await User.findOne({ email: req.body.email });
+      if (emailTaken) {
+        res.status(400);
+        throw new Error('Email is already in use');
+      }
+      user.email = req.body.email;
+      user.isVerified = false;
+      user.verificationToken = crypto.randomBytes(20).toString('hex');
+      emailChanged = true;
+    }
     user.bio = req.body.bio !== undefined ? req.body.bio : user.bio;
     user.interests = req.body.interests || user.interests;
-    user.profilePicture = req.body.profilePicture !== undefined ? req.body.profilePicture : user.profilePicture;
+    if (req.body.profilePicture !== undefined) {
+      const url = req.body.profilePicture;
+      if (url && !url.startsWith('https://') && !url.startsWith('http://')) {
+        res.status(400);
+        throw new Error('profilePicture must be a valid http(s) URL');
+      }
+      user.profilePicture = url;
+    }
     user.customEvents = req.body.customEvents || user.customEvents;
 
     if (req.body.password) {
@@ -48,6 +70,14 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     }
 
     const updatedUser = await user.save();
+
+    if (emailChanged) {
+      console.log(`\n================================`);
+      console.log(`[SMTP MOCK] Email Change Verification`);
+      console.log(`To: ${updatedUser.email}`);
+      console.log(`Link: ${env.frontendUrl}/verify/${updatedUser.verificationToken}`);
+      console.log(`================================\n`);
+    }
 
     res.json({
       _id: updatedUser._id,
@@ -59,9 +89,10 @@ const updateUserProfile = asyncHandler(async (req, res) => {
       profilePicture: updatedUser.profilePicture,
       customEvents: updatedUser.customEvents,
       isVerified: updatedUser.isVerified,
+      role: updatedUser.role,
       lastActiveAt: updatedUser.lastActiveAt,
-      podsCreated: await Pod.countDocuments({ hostId: updatedUser._id }),
-      podsJoined: await Pod.countDocuments({ 'members.userId': updatedUser._id }),
+      podsCreated: await Pod.countDocuments({ organizer: updatedUser._id }),
+      podsJoined: await Pod.countDocuments({ members: updatedUser._id }),
     });
   } else {
     res.status(404);
@@ -86,8 +117,8 @@ const getUserById = asyncHandler(async (req, res) => {
       isVerified: user.isVerified,
       lastActiveAt: user.lastActiveAt,
       createdAt: user.createdAt,
-      podsCreated: await Pod.countDocuments({ hostId: user._id }),
-      podsJoined: await Pod.countDocuments({ 'members.userId': user._id }),
+      podsCreated: await Pod.countDocuments({ organizer: user._id }),
+      podsJoined: await Pod.countDocuments({ members: user._id }),
     });
   } else {
     res.status(404);

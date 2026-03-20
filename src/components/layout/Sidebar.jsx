@@ -1,8 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, Calendar, User, MessageSquare } from 'lucide-react'
+import { Home, Users, Calendar, User, MessageSquare, ShieldCheck } from 'lucide-react'
 import clsx from 'clsx'
+import { useAuth } from '../../context/AuthContext'
 
-const navItems = [
+const baseNavItems = [
   { name: 'Home', path: '/', icon: Home },
   { name: 'My Pods', path: '/pods', icon: Users },
   { name: 'Calendar', path: '/calendar', icon: Calendar },
@@ -12,6 +13,11 @@ const navItems = [
 
 export default function Sidebar() {
   const location = useLocation()
+  const { user } = useAuth()
+  const navItems = [
+    ...baseNavItems,
+    ...(user?.role === 'admin' ? [{ name: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
+  ]
 
   return (
     <div className="w-64 border-r border-zinc-200/80 bg-zinc-50/50 min-h-screen flex flex-col p-4">

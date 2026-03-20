@@ -4,6 +4,7 @@ import { Strategy as GitHubStrategy } from 'passport-github2';
 import User from '../models/User.js';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import { env } from './env.js';
 dotenv.config();
 
 // Helper to find or create user upon OAuth verify
@@ -50,7 +51,7 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID || 'dummy',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'dummy',
-      callbackURL: 'http://localhost:5000/api/auth/google/callback',
+      callbackURL: env.googleCallbackUrl,
     },
     (accessToken, refreshToken, profile, done) => findOrCreateOAuthUser(profile, done)
   )
@@ -61,7 +62,7 @@ passport.use(
     {
       clientID: process.env.GITHUB_CLIENT_ID || 'dummy',
       clientSecret: process.env.GITHUB_CLIENT_SECRET || 'dummy',
-      callbackURL: 'http://localhost:5000/api/auth/github/callback',
+      callbackURL: env.githubCallbackUrl,
       scope: ['user:email'],
     },
     (accessToken, refreshToken, profile, done) => findOrCreateOAuthUser(profile, done)

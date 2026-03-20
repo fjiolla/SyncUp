@@ -209,8 +209,13 @@ export default function Calendar() {
           <div className="w-10 h-10 bg-blue-50 flex items-center justify-center rounded-lg text-blue-600">
             <CalendarIcon className="w-5 h-5" />
           </div>
-          <h2 className="text-xl font-bold text-zinc-900 tracking-tight">
+          <h2 className="text-xl font-bold text-zinc-900 tracking-tight flex items-center gap-2">
             {monthNames[currentMonth]} {currentYear}
+            {currentYear !== 2026 && (
+              <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100 uppercase tracking-wide">
+                Holidays: 2026 Only
+              </span>
+            )}
           </h2>
         </div>
         
@@ -293,7 +298,9 @@ export default function Calendar() {
             const isToday = new Date().getDate() === day && new Date().getMonth() === currentMonth && new Date().getFullYear() === currentYear;
             const fullDateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             
-            const holiday = indianHolidays.find(h => h.date === day && h.month === currentMonth);
+            const holiday = currentYear === 2026 
+              ? indianHolidays.find(h => h.date === day && h.month === currentMonth)
+              : null;
             
             const dayPods = pods.filter(pod => {
               if (!pod.date) return false;

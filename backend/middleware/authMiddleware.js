@@ -15,8 +15,12 @@ const protect = asyncHandler(async (req, res, next) => {
 
       // Fetch user from DB and attach to req object (without password)
       req.user = await User.findById(decoded.userId).select('-password');
+      if (!req.user) {
+        res.status(401);
+        throw new Error('Not authorized, user no longer exists');
+      }
 
-      next();
+      return next();
     } catch (error) {
       console.error(error);
       res.status(401);
@@ -32,11 +36,9 @@ const protect = asyncHandler(async (req, res, next) => {
 
 const isAdmin = (req, res, next) => {
   if (req.user && req.user.role === 'admin') {
-    next();
-  } else {
-    res.status(403);
-    throw new Error('Not authorized as an admin');
+    return next();
   }
+  res.status(403).json({ message: 'Not authorized as an admin' });
 };
 
 export { protect, isAdmin };

@@ -17,6 +17,7 @@ export function Button({
           'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 shadow-sm': variant === 'secondary',
           'bg-teal-500 text-white hover:bg-teal-600': variant === 'teal',
           'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100/50': variant === 'ghost',
+          'bg-transparent text-zinc-700 hover:bg-zinc-50 border border-zinc-200 shadow-sm': variant === 'outline',
           
           'h-8 px-3 text-xs': size === 'sm',
           'h-10 px-4 py-2': size === 'md',

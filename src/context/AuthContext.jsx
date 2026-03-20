@@ -13,16 +13,29 @@ export function AuthProvider({ children }) {
   // Initialize Auth
   useEffect(() => {
     const initAuth = async () => {
-      // Catch OAuth Redirect Tokens
+      // Handle OAuth callback status without exposing tokens in URL.
       const urlParams = new URLSearchParams(window.location.search);
-      const urlToken = urlParams.get('token');
+      const oauthStatus = urlParams.get('oauth');
       const authFailed = urlParams.get('authFailed');
 
-      if (urlToken) {
-        localStorage.setItem('syncup_token', urlToken);
-        window.history.replaceState({}, document.title, window.location.pathname);
-        toast.success('Successfully logged in with social provider!');
-      } else if (authFailed) {
+      if (oauthStatus === 'success') {
+        try {
+          const res = await api.post('/api/auth/oauth/exchange', {}, { withCredentials: true });
+          const userData = res.data;
+          if (userData.profilePicture === 'https://api.dicebear.com/7.x/initials/svg') userData.profilePicture = '';
+          localStorage.setItem('syncup_token', res.data.token);
+          setUser(userData);
+          toast.success('Successfully logged in with social provider!');
+        } catch (error) {
+          toast.error('Social authentication failed. Please try again or use email.');
+          localStorage.removeItem('syncup_token');
+          setUser(null);
+        } finally {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setIsLoading(false);
+        }
+        return;
+      } else if (oauthStatus === 'failed' || authFailed) {
         window.history.replaceState({}, document.title, window.location.pathname);
         toast.error('Social authentication failed. Please try again or use email.');
       }
@@ -91,22 +104,15 @@ export function AuthProvider({ children }) {
   const signup = async (name, email, password, age) => {
     try {
       const res = await api.post('/api/auth/signup', { name, email, password, age });
-      const userData = res.data;
-      if (userData.profilePicture === 'https://api.dicebear.com/7.x/initials/svg') userData.profilePicture = '';
-      
-      setUser(userData);
-      localStorage.setItem('syncup_token', res.data.token);
-      toast.success('Account created successfully!');
-      
-      setShowAuthModal(false);
-      if (pendingAction) {
-        pendingAction();
-        setPendingAction(null);
+      if (res.data?.verificationRequired) {
+        toast.success(res.data.message || 'Registration successful. Please verify your email.');
+        return { success: true, verificationRequired: true };
       }
-      return true;
+
+      return { success: true, verificationRequired: false };
     } catch (error) {
       toast.error(error.response?.data?.message || 'Signup failed');
-      return false;
+      return { success: false, verificationRequired: false };
     }
   };
 

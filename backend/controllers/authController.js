@@ -2,6 +2,7 @@ import asyncHandler from 'express-async-handler';
 import User from '../models/User.js';
 import generateToken from '../utils/generateToken.js';
 import crypto from 'crypto';
+import { env } from '../config/env.js';
 
 // @desc    Auth user & get token
 // @route   POST /api/auth/login
@@ -29,6 +30,7 @@ const loginUser = asyncHandler(async (req, res) => {
       bio: user.bio,
       profilePicture: user.profilePicture,
       customEvents: user.customEvents,
+      role: user.role,
       token: generateToken(user._id),
     });
   } else {
@@ -65,7 +67,7 @@ const registerUser = asyncHandler(async (req, res) => {
     console.log(`\n================================`);
     console.log(`[SMTP MOCK] Verification Email Sent!`);
     console.log(`To: ${user.email}`);
-    console.log(`Link: http://localhost:5173/verify/${verificationToken}`);
+    console.log(`Link: ${env.frontendUrl}/verify/${verificationToken}`);
     console.log(`================================\n`);
 
     res.status(201).json({
@@ -103,27 +105,21 @@ const resendVerification = asyncHandler(async (req, res) => {
   const { email } = req.body;
   const user = await User.findOne({ email });
 
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
+  const genericMessage = 'If this email exists and is unverified, a verification link has been sent.';
+
+  if (user && !user.isVerified) {
+    user.verificationToken = crypto.randomBytes(20).toString('hex');
+    await user.save();
+
+    // Mock Email Service
+    console.log(`\n================================`);
+    console.log(`[SMTP MOCK] Resent Verification Email!`);
+    console.log(`To: ${user.email}`);
+    console.log(`Link: ${env.frontendUrl}/verify/${user.verificationToken}`);
+    console.log(`================================\n`);
   }
 
-  if (user.isVerified) {
-    res.status(400);
-    throw new Error('Email is already verified');
-  }
-
-  user.verificationToken = crypto.randomBytes(20).toString('hex');
-  await user.save();
-
-  // Mock Email Service
-  console.log(`\n================================`);
-  console.log(`[SMTP MOCK] Resent Verification Email!`);
-  console.log(`To: ${user.email}`);
-  console.log(`Link: http://localhost:5173/verify/${user.verificationToken}`);
-  console.log(`================================\n`);
-
-  res.json({ message: 'Verification email resent successfully.' });
+  res.status(200).json({ message: genericMessage });
 });
 
 // @desc    Logout user

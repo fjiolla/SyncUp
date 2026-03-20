@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { usePods } from '../context/PodsContext';
 import api from '../lib/api';
-import io from 'socket.io-client';
+import { socket } from '../lib/socket';
 import { Send, Check, X, Users, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -20,32 +20,120 @@ export default function Messages() {
   
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const activeChatRef = useRef(null);
+  const currentRoomRef = useRef(null);
+  const historyRequestRef = useRef(0);
+  const pendingConnectHandlerRef = useRef(null);
+
+  const getRoomName = (chat) => {
+    if (!chat || !user?._id) return null;
+    return chat.type === 'pod'
+      ? `pod_${chat.id}`
+      : `dm_${[user._id, chat.id].sort().join('_')}`;
+  };
+
+  const messageBelongsToActiveChat = (msg, chat) => {
+    if (!chat || !msg) return false;
+    if (chat.type === 'pod') {
+      return String(msg.podId) === String(chat.id);
+    }
+
+    const senderId = msg.sender?._id != null ? String(msg.sender._id) : null;
+    const recipientId = msg.recipient != null
+      ? (typeof msg.recipient === 'object' ? String(msg.recipient._id || msg.recipient) : String(msg.recipient))
+      : null;
+    const myId = user?._id != null ? String(user._id) : null;
+    const chatId = chat?.id != null ? String(chat.id) : null;
+    if (!senderId || !recipientId || !myId || !chatId) return false;
+    return (
+      (senderId === myId && recipientId === chatId) ||
+      (senderId === chatId && recipientId === myId)
+    );
+  };
 
   useEffect(() => {
     if (!user) return;
+
+    socketRef.current = socket;
+
+    const joinCurrentRoomIfAny = () => {
+      if (currentRoomRef.current) {
+        socketRef.current?.emit('join_chat_room', currentRoomRef.current);
+      }
+    };
     
-    socketRef.current = io(process.env.NODE_ENV === 'production' ? 'https://your-backend.com' : 'http://localhost:5000');
-    
-    socketRef.current.on('new_message', (msg) => {
+    const handleNewMessage = (msg) => {
+      const currentActiveChat = activeChatRef.current;
+      if (!messageBelongsToActiveChat(msg, currentActiveChat)) {
+        return;
+      }
+
       setMessages(prev => {
         // Prevent duplicate append if sender is me (optimistic update optional, backend pushes to room)
         if (prev.some(m => m._id === msg._id)) return prev;
         return [...prev, msg];
       });
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-    });
+    };
+
+    socketRef.current.on('new_message', handleNewMessage);
+    socketRef.current.on('connect', joinCurrentRoomIfAny);
     
     loadDMData();
 
-    return () => socketRef.current?.disconnect();
+    return () => {
+      socketRef.current?.off('connect', joinCurrentRoomIfAny);
+      socketRef.current?.off('new_message', handleNewMessage);
+      if (currentRoomRef.current) {
+        socketRef.current?.emit('leave_chat_room', currentRoomRef.current);
+      }
+    };
   }, [user]);
 
   useEffect(() => {
     if (activeChat) {
-      loadChatHistory();
-      const roomName = activeChat.type === 'pod' ? `pod_${activeChat.id}` : `dm_${[user._id, activeChat.id].sort().join('_')}`;
-      socketRef.current.emit('join_chat_room', roomName);
+      activeChatRef.current = activeChat;
+      loadChatHistory(activeChat);
+      const nextRoomName = getRoomName(activeChat);
+      if (!nextRoomName) return;
+
+      if (currentRoomRef.current && currentRoomRef.current !== nextRoomName) {
+        socketRef.current?.emit('leave_chat_room', currentRoomRef.current);
+      }
+
+      currentRoomRef.current = nextRoomName;
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('join_chat_room', nextRoomName);
+      } else {
+        if (pendingConnectHandlerRef.current) {
+          socketRef.current?.off('connect', pendingConnectHandlerRef.current);
+        }
+        const handler = () => {
+          if (currentRoomRef.current === nextRoomName) {
+            socketRef.current?.emit('join_chat_room', nextRoomName);
+          }
+          pendingConnectHandlerRef.current = null;
+        };
+        pendingConnectHandlerRef.current = handler;
+        socketRef.current?.once('connect', handler);
+      }
+
+      return () => {
+        if (pendingConnectHandlerRef.current) {
+          socketRef.current?.off('connect', pendingConnectHandlerRef.current);
+          pendingConnectHandlerRef.current = null;
+        }
+      };
     } else {
+      if (pendingConnectHandlerRef.current) {
+        socketRef.current?.off('connect', pendingConnectHandlerRef.current);
+        pendingConnectHandlerRef.current = null;
+      }
+      if (currentRoomRef.current) {
+        socketRef.current?.emit('leave_chat_room', currentRoomRef.current);
+        currentRoomRef.current = null;
+      }
+      activeChatRef.current = null;
       setMessages([]);
     }
   }, [activeChat]);
@@ -53,8 +141,8 @@ export default function Messages() {
   const loadDMData = async () => {
     try {
       const [reqRes, connRes] = await Promise.all([
-        api.get('/messages/requests'),
-        api.get('/messages/connections')
+        api.get('/api/messages/requests'),
+        api.get('/api/messages/connections')
       ]);
       setRequests(reqRes.data);
       setConnections(connRes.data);
@@ -63,13 +151,17 @@ export default function Messages() {
     }
   };
 
-  const loadChatHistory = async () => {
+  const loadChatHistory = async (chatSnapshot) => {
+    const requestId = ++historyRequestRef.current;
     try {
-      const endpoint = activeChat.type === 'pod' ? `/messages/pod/${activeChat.id}` : `/messages/dm/${activeChat.id}`;
+      const endpoint = chatSnapshot.type === 'pod' ? `/api/messages/pod/${chatSnapshot.id}` : `/api/messages/dm/${chatSnapshot.id}`;
       const res = await api.get(endpoint);
+      if (requestId !== historyRequestRef.current) return;
+      if (!activeChatRef.current || String(activeChatRef.current.id) !== String(chatSnapshot.id) || activeChatRef.current.type !== chatSnapshot.type) return;
       setMessages(res.data);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     } catch (err) {
+      if (requestId !== historyRequestRef.current) return;
       toast.error('Failed to load messages');
     }
   };
@@ -84,7 +176,18 @@ export default function Messages() {
 
     setInputMessage(''); 
     try {
-      await api.post('/messages', payload);
+      const res = await api.post('/api/messages', payload);
+      const sentMessage = res.data;
+
+      // Ensure UI updates even if socket delivery is delayed/unavailable.
+      setMessages((prev) => {
+        if (!sentMessage?._id || prev.some((m) => m._id === sentMessage._id)) {
+          return prev;
+        }
+        return [...prev, sentMessage];
+      });
+
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     } catch (err) {
       toast.error('Failed to send message');
     }
@@ -92,9 +195,12 @@ export default function Messages() {
 
   const handleRequestResponse = async (id, status) => {
     try {
-      await api.put(`/messages/requests/respond/${id}`, { status });
+      await api.put(`/api/messages/requests/respond/${id}`, { status });
       toast.success(`Request ${status}`);
       loadDMData(); 
+      if (status === 'accepted') {
+        window.dispatchEvent(new Event('connections_updated'));
+      }
     } catch (err) {
       toast.error('Failed to respond');
     }
@@ -138,22 +244,24 @@ export default function Messages() {
               {requests.length > 0 && (
                 <div className="space-y-2 mb-6">
                   <h3 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest px-2">Pending Requests</h3>
-                  {requests.map(req => (
+                  {requests.map(req => {
+                    const requester = req.requester || {};
+                    return (
                     <div key={req._id} className="bg-white p-3 rounded-lg border border-zinc-200/80 shadow-sm flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 truncate">
-                        {req.requester.profilePicture && req.requester.profilePicture.includes('cloudinary') ? (
-                           <img src={req.requester.profilePicture} className="w-8 h-8 rounded-full object-cover" alt="avatar" />
+                        {requester.profilePicture && requester.profilePicture.includes('cloudinary') ? (
+                           <img src={requester.profilePicture} className="w-8 h-8 rounded-full object-cover" alt="avatar" />
                         ) : (
-                           <div className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-500 flex items-center justify-center text-xs font-bold uppercase">{req.requester.name.charAt(0)}</div>
+                           <div className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-500 flex items-center justify-center text-xs font-bold uppercase">{(requester.name || '?').charAt(0)}</div>
                         )}
-                        <span className="text-[13px] font-semibold text-zinc-900 truncate">{req.requester.name}</span>
+                        <span className="text-[13px] font-semibold text-zinc-900 truncate">{requester.name || 'Unknown'}</span>
                       </div>
                       <div className="flex gap-1">
                         <button onClick={() => handleRequestResponse(req._id, 'accepted')} className="p-1.5 bg-green-50 text-green-600 hover:bg-green-100 rounded-md transition-colors"><Check className="w-4 h-4" /></button>
                         <button onClick={() => handleRequestResponse(req._id, 'rejected')} className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md transition-colors"><X className="w-4 h-4" /></button>
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
               
@@ -171,9 +279,9 @@ export default function Messages() {
                        {friend.profilePicture && friend.profilePicture.includes('cloudinary') ? (
                            <img src={friend.profilePicture} className="w-10 h-10 rounded-full object-cover shadow-sm bg-white" alt="avatar" />
                         ) : (
-                           <div className="w-10 h-10 rounded-full bg-zinc-200 border border-zinc-300 text-zinc-600 flex items-center justify-center text-[13px] font-bold uppercase shadow-sm">{friend.name.charAt(0)}</div>
+                           <div className="w-10 h-10 rounded-full bg-zinc-200 border border-zinc-300 text-zinc-600 flex items-center justify-center text-[13px] font-bold uppercase shadow-sm">{(friend.name || '?').charAt(0)}</div>
                         )}
-                        <span className="text-[14px] font-bold text-zinc-900">{friend.name}</span>
+                        <span className="text-[14px] font-bold text-zinc-900">{friend.name || 'Unknown'}</span>
                      </button>
                   ))
                 )}
@@ -191,8 +299,8 @@ export default function Messages() {
                     onClick={() => setActiveChat({ type: 'pod', id: pod._id, name: pod.title })}
                     className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeChat?.id === pod._id ? 'bg-blue-50 border border-blue-200 shadow-sm' : 'hover:bg-zinc-100 border border-transparent'}`}
                   >
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">{pod.title.charAt(0)}</div>
-                    <span className="text-[14px] font-bold text-zinc-900 truncate">{pod.title}</span>
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">{(pod.title || '?').charAt(0)}</div>
+                    <span className="text-[14px] font-bold text-zinc-900 truncate">{pod.title || 'Pod'}</span>
                   </button>
                 ))
               )}
@@ -209,21 +317,24 @@ export default function Messages() {
               {activeChat.type === 'dm' && activeChat.picture && activeChat.picture.includes('cloudinary') ? (
                  <img src={activeChat.picture} className="w-9 h-9 rounded-full object-cover shadow-sm" alt="avatar" />
               ) : activeChat.type === 'dm' ? (
-                 <div className="w-9 h-9 rounded-full bg-zinc-200 border border-zinc-300 text-zinc-600 flex items-center justify-center text-[13px] font-bold uppercase shadow-sm">{activeChat.name.charAt(0)}</div>
+                 <div className="w-9 h-9 rounded-full bg-zinc-200 border border-zinc-300 text-zinc-600 flex items-center justify-center text-[13px] font-bold uppercase shadow-sm">{(activeChat.name || '?').charAt(0)}</div>
               ) : (
-                 <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 text-white flex items-center justify-center text-xs font-bold shadow-sm">{activeChat.name.charAt(0)}</div>
+                 <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 text-white flex items-center justify-center text-xs font-bold shadow-sm">{(activeChat.name || '?').charAt(0)}</div>
               )}
-              <h3 className="text-[15px] font-bold text-zinc-900 tracking-tight">{activeChat.name}</h3>
+              <h3 className="text-[15px] font-bold text-zinc-900 tracking-tight">{activeChat.name || 'Chat'}</h3>
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-white custom-scrollbar mt-2">
               {messages.map(msg => {
-                const isMe = msg.sender._id === user._id;
+                const sender = msg.sender || null;
+                const senderId = sender?._id || '';
+                const senderName = sender?.name || 'Unknown user';
+                const isMe = String(senderId) === String(user._id);
                 return (
                   <div key={msg._id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] ${isMe ? 'order-2' : ''}`}>
                       {!isMe && activeChat.type === 'pod' && (
-                        <span className="text-[10px] font-bold text-zinc-500 ml-1 mb-1 block">{msg.sender.name}</span>
+                        <span className="text-[10px] font-bold text-zinc-500 ml-1 mb-1 block">{senderName}</span>
                       )}
                       <div className={`px-4 py-2.5 rounded-2xl text-[14px] leading-relaxed shadow-sm ${isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-zinc-100 border border-zinc-200 text-zinc-800 rounded-bl-sm'}`}>
                         {msg.content}

@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { env } from '../config/env';
 
 // Create an Axios instance pointing to the Express backend
 const api = axios.create({
-  baseURL: 'http://localhost:5000',
+  baseURL: env.apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },

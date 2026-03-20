@@ -70,11 +70,11 @@ export default function Home() {
   }
 
   if (minAgeFilter) {
-    recommendedActivities = recommendedActivities.filter(p => (p.minAge || 18) >= parseInt(minAgeFilter));
+    recommendedActivities = recommendedActivities.filter(p => (p.minAge || 18) <= parseInt(minAgeFilter));
   }
 
   if (maxAgeFilter) {
-    recommendedActivities = recommendedActivities.filter(p => (p.maxAge || 100) <= parseInt(maxAgeFilter));
+    recommendedActivities = recommendedActivities.filter(p => (p.maxAge || 100) >= parseInt(maxAgeFilter));
   }
 
   if (minTrustScoreFilter) {

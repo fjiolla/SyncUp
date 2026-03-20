@@ -23,7 +23,8 @@ const errorHandler = (err, req, res, next) => {
   // Handle Mongoose Duplicate Key Error
   if (err.code === 11000) {
     statusCode = 400;
-    message = 'Email is already registered';
+    const keys = err.keyValue ? Object.keys(err.keyValue).join(', ') : '';
+    message = keys.includes('email') ? 'Email is already registered' : 'Duplicate entry';
   }
 
   res.status(statusCode).json({

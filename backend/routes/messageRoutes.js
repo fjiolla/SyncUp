@@ -4,6 +4,7 @@ import {
   sendRequest,
   respondRequest,
   getIncomingRequests,
+  getConnectionStatus,
   getConnections,
   getDMHistory,
   getPodHistory,
@@ -16,6 +17,7 @@ const router = express.Router();
 router.post('/requests/send', protect, sendRequest);
 router.put('/requests/respond/:id', protect, respondRequest);
 router.get('/requests', protect, getIncomingRequests);
+router.get('/status/:userId', protect, getConnectionStatus);
 router.get('/connections', protect, getConnections);
 
 // History Fetches

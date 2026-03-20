@@ -1,7 +1,19 @@
 import asyncHandler from 'express-async-handler';
+import mongoose from 'mongoose';
 import Message from '../models/Message.js';
 import MessageRequest from '../models/MessageRequest.js';
 import Pod from '../models/Pod.js';
+import User from '../models/User.js';
+import { isPodMember } from '../utils/podUtils.js';
+
+const isValidObjectId = (value) => value && /^[a-fA-F0-9]{24}$/.test(String(value));
+
+// Normalized participant pair for symmetric uniqueness
+const getParticipantPair = (id1, id2) => {
+  const a = id1.toString();
+  const b = id2.toString();
+  return a <= b ? [new mongoose.Types.ObjectId(a), new mongoose.Types.ObjectId(b)] : [new mongoose.Types.ObjectId(b), new mongoose.Types.ObjectId(a)];
+};
 
 // @desc    Send a message request
 // @route   POST /api/messages/requests/send
@@ -13,25 +25,41 @@ const sendRequest = asyncHandler(async (req, res) => {
     throw new Error('Invalid recipient');
   }
 
-  // Check if request exists
+  const recipientExists = await User.exists({ _id: recipientId });
+  if (!recipientExists) {
+    res.status(404);
+    throw new Error('Recipient not found');
+  }
+
+  const participants = getParticipantPair(req.user._id, recipientId);
+
+  // Check if request exists (symmetric; includes legacy docs without participants)
   const existing = await MessageRequest.findOne({
     $or: [
+      { participants },
       { requester: req.user._id, recipient: recipientId },
-      { requester: recipientId, recipient: req.user._id }
-    ]
+      { requester: recipientId, recipient: req.user._id },
+    ],
   });
-
   if (existing) {
     res.status(400);
     throw new Error(`Request already ${existing.status}`);
   }
 
-  const request = await MessageRequest.create({
-    requester: req.user._id,
-    recipient: recipientId
-  });
-
-  res.status(201).json(request);
+  try {
+    const request = await MessageRequest.create({
+      requester: req.user._id,
+      recipient: recipientId,
+      participants,
+    });
+    res.status(201).json(request);
+  } catch (err) {
+    if (err.code === 11000) {
+      res.status(400);
+      throw new Error('Request already exists');
+    }
+    throw err;
+  }
 });
 
 // @desc    Respond to a message request
@@ -73,6 +101,30 @@ const getIncomingRequests = asyncHandler(async (req, res) => {
   res.json(requests);
 });
 
+// @desc    Get connection status with a specific user
+// @route   GET /api/messages/status/:userId
+// @access  Private
+const getConnectionStatus = asyncHandler(async (req, res) => {
+  const targetUserId = req.params.userId;
+  if (!targetUserId) {
+    res.status(400);
+    throw new Error('userId required');
+  }
+  if (targetUserId === req.user._id.toString()) {
+    return res.json({ status: 'self' });
+  }
+
+  const request = await MessageRequest.findOne({
+    $or: [
+      { requester: req.user._id, recipient: targetUserId },
+      { requester: targetUserId, recipient: req.user._id },
+    ],
+  }).select('status');
+
+  if (!request) return res.json({ status: 'none' });
+  res.json({ status: request.status });
+});
+
 // @desc    Get accepted DM connections (friends)
 // @route   GET /api/messages/connections
 // @access  Private
@@ -82,10 +134,10 @@ const getConnections = asyncHandler(async (req, res) => {
     status: 'accepted'
   }).populate('requester', 'name profilePicture isVerified').populate('recipient', 'name profilePicture isVerified');
   
-  // Format the list uniquely 
-  const friends = connections.map(conn => {
-    return conn.requester._id.toString() === req.user._id.toString() ? conn.recipient : conn.requester;
-  });
+  // Format the list uniquely (skip if requester/recipient failed to populate, e.g. deleted user)
+  const friends = connections
+    .filter((conn) => conn.requester && conn.recipient)
+    .map((conn) => (conn.requester._id.toString() === req.user._id.toString() ? conn.recipient : conn.requester));
 
   res.json(friends);
 });
@@ -110,10 +162,12 @@ const getDMHistory = asyncHandler(async (req, res) => {
   }
 
   const messages = await Message.find({
-    podId: { $exists: false },
-    $or: [
-      { sender: req.user._id, recipient: targetUserId },
-      { sender: targetUserId, recipient: req.user._id }
+    $and: [
+      { $or: [{ podId: { $exists: false } }, { podId: null }] },
+      { $or: [
+        { sender: req.user._id, recipient: targetUserId },
+        { sender: targetUserId, recipient: req.user._id }
+      ]}
     ]
   }).sort({ createdAt: 1 }).populate('sender', 'name profilePicture');
 
@@ -130,7 +184,7 @@ const getPodHistory = asyncHandler(async (req, res) => {
     throw new Error('Pod not found');
   }
 
-  const isMember = pod.members.some(m => m.user.toString() === req.user._id.toString()) || pod.organizer.toString() === req.user._id.toString();
+  const isMember = isPodMember(pod, req.user._id);
   if (!isMember) {
     res.status(403);
     throw new Error('Not authorized to view this pod chat');
@@ -154,9 +208,28 @@ const sendMessage = asyncHandler(async (req, res) => {
     throw new Error('Message content is required');
   }
 
+  if (podId && !isValidObjectId(podId)) {
+    res.status(400);
+    throw new Error('Invalid podId');
+  }
+  if (recipientId && !isValidObjectId(recipientId)) {
+    res.status(400);
+    throw new Error('Invalid recipientId');
+  }
+
+  // Basic sanitization: strip script tags and null bytes
+  const sanitizedContent = String(content)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/\0/g, '')
+    .trim();
+  if (!sanitizedContent) {
+    res.status(400);
+    throw new Error('Message content is required');
+  }
+
   let messageOptions = {
     sender: req.user._id,
-    content
+    content: sanitizedContent
   };
 
   let roomName = '';
@@ -164,7 +237,7 @@ const sendMessage = asyncHandler(async (req, res) => {
   if (podId) {
     const pod = await Pod.findById(podId);
     if (!pod) throw new Error('Pod not found');
-    const isMember = pod.members.some(m => m.user.toString() === req.user._id.toString()) || pod.organizer.toString() === req.user._id.toString();
+    const isMember = isPodMember(pod, req.user._id);
     if (!isMember) {
       res.status(403);
       throw new Error('Must be a member of the pod to send messages');
@@ -194,6 +267,8 @@ const sendMessage = asyncHandler(async (req, res) => {
   }
 
   let message = await Message.create(messageOptions);
+  // Note: recipient is intentionally NOT populated — it is returned as a raw ObjectId string.
+  // Frontend messageBelongsToActiveChat relies on this for string comparison.
   message = await message.populate('sender', 'name profilePicture');
 
   // Safely emit to live socket instance
@@ -209,6 +284,7 @@ export {
   sendRequest,
   respondRequest,
   getIncomingRequests,
+  getConnectionStatus,
   getConnections,
   getDMHistory,
   getPodHistory,

@@ -14,11 +14,11 @@ export default function PublicProfile() {
   
   const [profileUser, setProfileUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [connectionStatus, setConnectionStatus] = useState(null); // 'none', 'pending', 'accepted'
-  
+  const [connectionStatus, setConnectionStatus] = useState('none'); // 'none', 'pending', 'accepted'
+  const [statusLoading, setStatusLoading] = useState(false);
   // If the user tries to view their own profile, redirect natively backwards
   useEffect(() => {
-    if (currentUser && currentUser._id === id) {
+    if (currentUser && String(currentUser._id) === String(id)) {
       navigate('/profile');
     }
   }, [currentUser, id, navigate]);
@@ -43,21 +43,18 @@ export default function PublicProfile() {
   };
 
   const checkConnectionStatus = async () => {
+    setStatusLoading(true);
     try {
-      const [reqRes, connRes] = await Promise.all([
-        api.get('/api/messages/requests'),
-        api.get('/api/messages/connections')
-      ]);
-      
-      const isConnected = connRes.data.some(c => c._id === id);
-      if (isConnected) {
-        setConnectionStatus('accepted');
-        return;
-      }
-      // If we made it here it's either unrequested or pending sent
-      setConnectionStatus('none');
+      const res = await api.get(`/api/messages/status/${id}`);
+      const status = res.data?.status;
+      if (status === 'accepted') setConnectionStatus('accepted');
+      else if (status === 'pending') setConnectionStatus('pending');
+      else setConnectionStatus('none');
     } catch (err) {
       console.error(err);
+      setConnectionStatus('none');
+    } finally {
+      setStatusLoading(false);
     }
   };
 
@@ -124,7 +121,14 @@ export default function PublicProfile() {
           </div>
           
           <div className="flex gap-2">
-            {connectionStatus === 'accepted' ? (
+            {statusLoading ? (
+               <button 
+                 disabled
+                 className="px-5 py-2.5 bg-zinc-100 border border-zinc-200 text-zinc-400 font-medium text-[13px] rounded-md cursor-not-allowed"
+               >
+                 Loading...
+               </button>
+            ) : connectionStatus === 'accepted' ? (
                <button 
                  onClick={() => navigate('/messages')}
                  className="px-5 py-2.5 bg-white border border-zinc-200 text-zinc-700 font-medium text-[13px] rounded-md hover:bg-zinc-50 transition-all cursor-pointer flex items-center gap-2 shadow-sm"

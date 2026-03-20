@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './Button';
+import toast from 'react-hot-toast';
 
 export function CreatePodModal({ isOpen, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
@@ -86,7 +87,10 @@ export function CreatePodModal({ isOpen, onClose, onSubmit }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.title || !formData.description || !formData.date || !formData.time || !formData.locationCity || !formData.locationExact) return; 
+    if (!formData.title || !formData.description || !formData.date || !formData.time || !formData.locationCity || !formData.locationExact) {
+      toast.error('Please fill in all required fields. Make sure to select a city from the dropdown.');
+      return;
+    }
     
     // Pass data back up
     onSubmit({
@@ -283,7 +287,14 @@ export function CreatePodModal({ isOpen, onClose, onSubmit }) {
                       setCitySearch(e.target.value);
                       if (e.target.value !== formData.locationCity) setFormData({...formData, locationCity: ''});
                     }}
-                    onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowCityDropdown(false);
+                        if (!formData.locationCity && citySearch.trim()) {
+                          setFormData(prev => ({ ...prev, locationCity: citySearch.trim() }));
+                        }
+                      }, 200);
+                    }}
                     onFocus={() => { if (suggestedCities.length > 0) setShowCityDropdown(true); }}
                   />
                   {isSearchingCities && (

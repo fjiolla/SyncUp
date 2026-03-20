@@ -1,19 +1,30 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import api from '../lib/api';
-import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { useAuth } from './AuthContext';
+import { socket } from '../lib/socket';
 
 const PodsContext = createContext(undefined);
-
-// Initialize single global socket connection
-const socket = io('http://localhost:5000', { autoConnect: true });
 
 export function PodsProvider({ children }) {
   const { user } = useAuth();
   const [pods, setPods] = useState([]);
   const [activeFilter, setActiveFilter] = useState('');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('syncup_token');
+    if (token) {
+      socket.auth = { token };
+      socket.connect();
+    } else {
+      socket.disconnect();
+    }
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user]);
 
   // Initial fetch and socket setup
   useEffect(() => {
@@ -43,7 +54,8 @@ export function PodsProvider({ children }) {
     });
 
     socket.on('pod_deleted', (podId) => {
-      setPods((prev) => prev.filter((p) => p._id !== podId));
+      const idStr = String(podId);
+      setPods((prev) => prev.filter((p) => String(p._id) !== idStr));
     });
 
     socket.on('live_notification', (message) => {
@@ -59,35 +71,38 @@ export function PodsProvider({ children }) {
   }, []);
 
   // Format pod mapping logic locally for UI components (role mapping)
-  const getFormattedPods = () => {
+  const formattedPods = useMemo(() => {
+    const myId = user?._id != null ? String(user._id) : null;
     return pods.map(pod => {
-      const isOrganizer = user && pod.organizer._id === user._id;
-      const isJoined = user && pod.members.some(m => m._id === user._id);
-      
-      // Calculate derived fields that the UI expects
-      const urgency = pod.spotsLeft <= 2 && pod.spotsLeft > 0 ? `${pod.spotsLeft} spots left` : 
-                      pod.spotsLeft === 0 ? 'Full' : null;
-      
+      const orgId = pod.organizer?._id != null ? String(pod.organizer._id) : null;
+      const isOrganizer = myId && orgId && orgId === myId;
+      const isJoined = myId && (isOrganizer || (pod.members || []).some(m => String(m._id) === myId));
+
+      const spotsLeft = pod.maxMembers - (pod.members?.length || 0);
+      const urgency = spotsLeft <= 2 && spotsLeft > 0 ? `${spotsLeft} spots left` :
+                      spotsLeft === 0 ? 'Full' : null;
+
       const podDate = new Date(pod.dateTime || pod.date);
       const status = podDate > new Date() ? 'active' : 'past';
 
       return {
         ...pod,
-        id: pod._id, // Map MongoDB _id to id for old UI compatibility
+        id: pod._id,
         role: isOrganizer ? 'organizer' : isJoined ? 'member' : 'none',
-        isJoined: isJoined,
-        date: pod.dateTime, // Important: explicitly map dateTime back onto date string for Home.jsx Filters
-        status: status,
-        host: pod.organizer.name,
-        hostId: pod.organizer._id,
-        membersCount: pod.members.length,
-        avatars: pod.members.map(m => m.profilePicture),
-        membersList: pod.members.map(m => ({ id: m._id, name: m.name, profilePicture: m.profilePicture })),
-        time: new Date(pod.dateTime).toLocaleString([], { weekday: 'long', hour: '2-digit', minute:'2-digit' }),
-        urgency
+        isJoined: !!isJoined,
+        date: pod.dateTime,
+        status,
+        host: pod.organizer?.name,
+        hostId: pod.organizer?._id,
+        membersCount: pod.members?.length ?? 0,
+        avatars: (pod.members || []).map(m => m.profilePicture),
+        membersList: (pod.members || []).map(m => ({ id: m._id, name: m.name, profilePicture: m.profilePicture })),
+        time: new Date(pod.dateTime).toLocaleString([], { weekday: 'long', hour: '2-digit', minute: '2-digit' }),
+        urgency,
+        spotsLeft,
       };
     });
-  };
+  }, [pods, user]);
 
   const addPod = async (newPodData) => {
     try {
@@ -99,6 +114,10 @@ export function PodsProvider({ children }) {
         dateTime: newPodData.dateTime || new Date().toISOString()
       });
       // The socket event will broadcast 'pod_created', but we can also eagerly add it
+      setPods((prev) => {
+        if (prev.some(p => p._id === res.data._id)) return prev;
+        return [res.data, ...prev];
+      });
       toast.success('Pod created!');
       return res.data;
     } catch (error) {
@@ -130,7 +149,19 @@ export function PodsProvider({ children }) {
   };
   
   const updatePodDetails = async (id, updates) => {
-    toast.error('Edit feature requires API update route...');
+    try {
+      const payload = {
+        title: updates.title,
+        description: updates.description,
+        location: updates.location,
+      };
+      if (updates.dateTime) payload.dateTime = new Date(updates.dateTime).toISOString();
+      await api.put(`/api/pods/${id}`, payload);
+      toast.success('Pod updated');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update pod');
+      throw error;
+    }
   };
   
   const deletePod = async (id) => {
@@ -141,8 +172,6 @@ export function PodsProvider({ children }) {
       toast.error(error.response?.data?.message || 'Failed to delete');
     }
   };
-
-  const formattedPods = getFormattedPods();
 
   return (
     <PodsContext.Provider value={{ 

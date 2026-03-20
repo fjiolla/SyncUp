@@ -1,40 +1,83 @@
-import React, { useState } from 'react';
-import { ShieldAlert, Flag, Trash2, CheckCircle2, ChevronDown, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ShieldAlert, Flag, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Card } from '../components/ui/Card';
+import api from '../lib/api';
+import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 export default function Admin() {
-  const [reports, setReports] = useState([
-    {
-      id: "rpt_1",
-      podTitle: "Open Mic Night",
-      podId: "69bcccd3603ac50da9484c1e",
-      reportedBy: "Alex Johnson",
-      reason: "Inappropriate content",
-      details: "The host changed the description to something completely off-topic and inappropriate for an open mic.",
-      date: "2026-03-20T10:15:00Z",
-      status: "pending"
-    },
-    {
-      id: "rpt_2",
-      podTitle: "Weekend Hike",
-      podId: "12xyz...",
-      reportedBy: "Sarah Smith",
-      reason: "Spam or misleading",
-      details: "This seems to be a commercial tour disguised as a community pod.",
-      date: "2026-03-19T14:22:00Z",
-      status: "pending"
+  const navigate = useNavigate();
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && (!user || user.role !== 'admin')) {
+      navigate('/', { replace: true });
     }
-  ]);
+  }, [user, isLoading, navigate]);
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleResolve = (id) => {
-    setReports(reports.map(r => r.id === id ? { ...r, status: 'resolved' } : r));
+  const fetchReports = async () => {
+    try {
+      const res = await api.get('/api/admin/reports');
+      const mapped = (res.data || []).map((r) => ({
+        id: r._id,
+        targetTitle: r.target?.title || r.target?.name || 'Unknown',
+        targetType: r.targetType,
+        targetId: r.targetId,
+        reportedBy: r.reporter?.name || 'Unknown',
+        reason: r.reason,
+        details: r.details || '',
+        date: r.createdAt,
+        status: r.status || 'pending',
+      }));
+      setReports(mapped);
+    } catch (err) {
+      toast.error(err.response?.status === 403 ? 'Admin access required' : 'Failed to load reports');
+      setReports([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeletePod = (id) => {
-    // In a real app, this would call the DELETE /api/pods/:id endpoint
-    handleResolve(id);
-    alert('Pod has been deleted from the database.');
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  const handleResolve = async (id) => {
+    try {
+      await api.put(`/api/admin/reports/${id}`, { status: 'resolved' });
+      setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'resolved' } : r)));
+      toast.success('Report marked as resolved');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resolve');
+    }
   };
+
+  const handleDeletePod = async (reportId, targetId, targetType) => {
+    if (targetType !== 'pod') {
+      await handleResolve(reportId);
+      return;
+    }
+    try {
+      await api.delete(`/api/admin/pods/${targetId}`);
+      await handleResolve(reportId);
+      toast.success('Pod deleted and report resolved');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete pod');
+    }
+  };
+
+  const pendingReports = reports.filter((r) => (r.status || 'pending') === 'pending');
+
+  if (isLoading || (!user || user.role !== 'admin')) {
+    return (
+      <div className="py-20 text-center text-zinc-500 text-[13px] font-medium">
+        {isLoading ? 'Loading...' : 'Access denied'}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12">
@@ -51,11 +94,11 @@ export default function Admin() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
         <Card className="p-5 border-zinc-200/80 shadow-sm flex flex-col justify-center">
           <span className="text-[12px] font-bold tracking-wider text-zinc-500 uppercase mb-1">Active Reports</span>
-          <span className="text-3xl font-bold text-red-600">{reports.filter(r => r.status === 'pending').length}</span>
+          <span className="text-3xl font-bold text-red-600">{loading ? '—' : pendingReports.length}</span>
         </Card>
         <Card className="p-5 border-zinc-200/80 shadow-sm flex flex-col justify-center">
-          <span className="text-[12px] font-bold tracking-wider text-zinc-500 uppercase mb-1">Resolved Today</span>
-          <span className="text-3xl font-bold text-emerald-600">12</span>
+          <span className="text-[12px] font-bold tracking-wider text-zinc-500 uppercase mb-1">Resolved</span>
+          <span className="text-3xl font-bold text-emerald-600">{loading ? '—' : reports.filter((r) => r.status === 'resolved').length}</span>
         </Card>
         <Card className="p-5 border-zinc-200/80 shadow-sm flex flex-col justify-center">
           <span className="text-[12px] font-bold tracking-wider text-zinc-500 uppercase mb-1">System Status</span>
@@ -71,7 +114,11 @@ export default function Admin() {
           <Flag className="w-4 h-4 text-zinc-400" /> Moderation Queue
         </h3>
         
-        {reports.length === 0 ? (
+        {loading ? (
+          <div className="p-12 text-center bg-zinc-50 border border-dashed border-zinc-200 rounded-xl">
+            <p className="text-[14px] font-medium text-zinc-500">Loading reports...</p>
+          </div>
+        ) : pendingReports.length === 0 ? (
           <div className="p-12 text-center bg-zinc-50 border border-dashed border-zinc-200 rounded-xl">
             <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-3" />
             <h3 className="text-[15px] font-semibold text-zinc-900">Queue is empty</h3>
@@ -79,33 +126,31 @@ export default function Admin() {
           </div>
         ) : (
           <div className="space-y-3">
-            {reports.map(report => (
-              <Card key={report.id} className={`p-0 overflow-hidden border transition-all ${report.status === 'resolved' ? 'opacity-60 border-zinc-200/50 bg-zinc-50/50' : 'border-zinc-200 shadow-sm bg-white'}`}>
+            {pendingReports.map((report) => (
+              <Card key={report.id} className="p-0 overflow-hidden border border-zinc-200 shadow-sm bg-white">
                 <div className="p-5">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${report.status === 'resolved' ? 'bg-zinc-100 text-zinc-500' : 'bg-red-50 text-red-600 border border-red-100/50'}`}>
-                          {report.status}
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-600 border border-red-100/50">
+                          {report.targetType}
                         </span>
                         <span className="text-[12px] font-medium text-zinc-400">
                           {new Date(report.date).toLocaleString()}
                         </span>
                       </div>
-                      <h4 className="text-base font-semibold text-zinc-900">{report.podTitle}</h4>
+                      <h4 className="text-base font-semibold text-zinc-900">{report.targetTitle}</h4>
                       <p className="text-[13px] text-zinc-500 mt-0.5">Reported by <span className="font-medium text-zinc-700">{report.reportedBy}</span> for <span className="font-medium text-zinc-900">"{report.reason}"</span></p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {report.status === 'pending' && (
-                        <>
-                          <button onClick={() => handleDeletePod(report.id)} className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-md text-[12px] font-medium transition-colors flex items-center gap-1.5 shadow-sm">
-                            <Trash2 className="w-3.5 h-3.5" /> Delete Pod
-                          </button>
-                          <button onClick={() => handleResolve(report.id)} className="px-3 py-1.5 bg-zinc-900 text-white hover:bg-black rounded-md text-[12px] font-medium transition-colors shadow-sm">
-                            Mark Safe
-                          </button>
-                        </>
+                      {report.targetType === 'pod' && (
+                        <button onClick={() => handleDeletePod(report.id, report.targetId, report.targetType)} className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-md text-[12px] font-medium transition-colors flex items-center gap-1.5 shadow-sm">
+                          <Trash2 className="w-3.5 h-3.5" /> Delete Pod
+                        </button>
                       )}
+                      <button onClick={() => handleResolve(report.id)} className="px-3 py-1.5 bg-zinc-900 text-white hover:bg-black rounded-md text-[12px] font-medium transition-colors shadow-sm">
+                        Mark Safe
+                      </button>
                     </div>
                   </div>
                   

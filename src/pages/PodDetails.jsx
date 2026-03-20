@@ -7,10 +7,18 @@ import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import api from '../lib/api'
 
+const toDatetimeLocal = (d) => {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 export default function PodDetails() {
   const navigate = useNavigate()
   const { id } = useParams()
-  const { pods, joinPod, leavePod, updatePodDetails, deletePod, currentUser } = usePods()
+  const { pods, loading, joinPod, leavePod, updatePodDetails, deletePod, currentUser } = usePods()
   const { requireAuth, isLoggedIn } = useAuth()
   
   const pod = pods.find(p => p.id === id)
@@ -20,11 +28,14 @@ export default function PodDetails() {
   const [showMenu, setShowMenu] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
   const [isReportOpen, setIsReportOpen] = useState(false)
+  const [reportReason, setReportReason] = useState('Inappropriate content')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
   const [showAllMembers, setShowAllMembers] = useState(false)
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
-    time: '',
+    dateTime: '',
     location: '',
   })
 
@@ -34,11 +45,19 @@ export default function PodDetails() {
       setEditForm({
         title: pod.title || '',
         description: pod.description || '',
-        time: pod.time || '',
+        dateTime: toDatetimeLocal(pod.dateTime || pod.date),
         location: pod.location || '',
       })
     }
   }, [pod, isEditing])
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center text-zinc-500 text-[13px] font-medium">
+        Loading pod...
+      </div>
+    )
+  }
 
   if (!pod) {
     return (
@@ -52,16 +71,20 @@ export default function PodDetails() {
   // If the user isn't logged in, they aren't the organizer or a member
   const role = isLoggedIn ? pod.role : 'none'
 
-  const handleSave = () => {
-    updatePodDetails(pod.id, editForm)
-    setIsEditing(false)
+  const handleSave = async () => {
+    try {
+      await updatePodDetails(pod.id, editForm)
+      setIsEditing(false)
+    } catch {
+      // Error already toasted by updatePodDetails
+    }
   }
 
   const handleCancel = () => {
     setEditForm({
       title: pod.title,
       description: pod.description,
-      time: pod.time,
+      dateTime: toDatetimeLocal(pod.dateTime || pod.date),
       location: pod.location,
     })
     setIsEditing(false)
@@ -69,7 +92,7 @@ export default function PodDetails() {
 
   const handleDelete = () => {
     deletePod(pod.id)
-    navigate('/my-pods')
+    navigate('/pods')
   }
 
   const handleCopyLink = () => {
@@ -79,9 +102,9 @@ export default function PodDetails() {
   };
 
   const handleSendDMRequest = async (recipientId) => {
-    if (recipientId === user?._id) return;
+    if (recipientId === currentUser?._id) return;
     try {
-      await api.post('/messages/requests/send', { recipientId });
+      await api.post('/api/messages/requests/send', { recipientId });
       toast.success('Message request sent!');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to send request');
@@ -203,7 +226,7 @@ export default function PodDetails() {
             )}
             
             <div className="flex flex-wrap gap-2 pt-2">
-              {pod.tags.map(tag => (
+              {(pod.tags || []).map(tag => (
                 <span key={tag} className="px-3 py-1 text-sm font-medium text-blue-700 bg-blue-50/60 rounded border border-blue-100/50">
                   {tag}
                 </span>
@@ -218,10 +241,11 @@ export default function PodDetails() {
                <div className="flex-1 pr-4">
                  {isEditing ? (
                    <div className="space-y-1">
-                     <p className="font-medium text-zinc-900 text-sm mb-0.5">Time</p>
+                     <p className="font-medium text-zinc-900 text-sm mb-0.5">Date & Time</p>
                      <input 
-                       value={editForm.time}
-                       onChange={e => setEditForm({...editForm, time: e.target.value})}
+                       type="datetime-local"
+                       value={editForm.dateTime}
+                       onChange={e => setEditForm({...editForm, dateTime: e.target.value})}
                        className="w-full font-medium text-zinc-900 px-3 py-1.5 border border-zinc-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                      />
                    </div>
@@ -321,7 +345,7 @@ export default function PodDetails() {
             <div className="pb-5 border-b border-zinc-100">
                <div className="flex items-center justify-between mb-1">
                  <span className="text-2xl font-semibold text-zinc-900 tracking-tight">
-                   {pod.joinedCount || pod.membersCount} <span className="text-lg font-normal text-zinc-400">/ {pod.maxMembers}</span>
+                   {pod.membersCount} <span className="text-lg font-normal text-zinc-400">/ {pod.maxMembers}</span>
                  </span>
                  <span className="text-[11px] font-semibold tracking-wider uppercase text-zinc-500">
                    {pod.spotsLeft} spots left
@@ -437,7 +461,7 @@ export default function PodDetails() {
                            )}
                            <span className="text-[14px] font-semibold text-zinc-900 group-hover:text-blue-600 transition-colors">{m.name}</span>
                          </Link>
-                         {user && m.id !== user._id && (
+                        {currentUser && m.id !== currentUser._id && (
                            <Link 
                              to={`/profile/${m.id}`}
                              className="text-[12px] font-medium text-zinc-700 hover:text-blue-700 border border-zinc-200 bg-white hover:bg-zinc-50 px-3 py-1.5 rounded-md transition-colors"
@@ -464,9 +488,9 @@ export default function PodDetails() {
                         </Link>
                       );
                     })}
-                    {pod.joinedCount > (pod.membersList?.length || 0) && (
+                    {pod.membersCount > (pod.membersList?.length || 0) && (
                       <div className="inline-flex h-10 w-10 items-center justify-center rounded-full ring-2 ring-white bg-zinc-50 border border-zinc-200 text-[11px] font-bold text-zinc-500 relative z-10 shadow-sm cursor-pointer" onClick={() => setShowAllMembers(true)}>
-                        +{pod.joinedCount - Math.min((pod.membersList?.length || 0), 5)}
+                        +{pod.membersCount - Math.min((pod.membersList?.length || 0), 5)}
                       </div>
                     )}
                  </div>
@@ -481,22 +505,46 @@ export default function PodDetails() {
       {/* Report Modal */}
       {isReportOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={() => setIsReportOpen(false)} />
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={() => !reportSubmitting && setIsReportOpen(false)} />
           <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-xl font-semibold text-zinc-900 tracking-tight">Report Issue</h3>
                 <p className="text-[14px] text-zinc-500 font-medium mt-1">What's wrong with this pod?</p>
               </div>
-              <button onClick={() => setIsReportOpen(false)} className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors">
+              <button onClick={() => !reportSubmitting && setIsReportOpen(false)} className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="space-y-5">
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!pod?.id || reportSubmitting) return;
+              setReportSubmitting(true);
+              try {
+                await api.post('/api/reports', {
+                  targetType: 'pod',
+                  targetId: pod.id,
+                  reason: reportReason,
+                  details: reportDetails,
+                });
+                setIsReportOpen(false);
+                setReportDetails('');
+                setReportReason('Inappropriate content');
+                toast.success('Report submitted to Trust & Safety team.');
+              } catch (err) {
+                toast.error(err.response?.data?.message || 'Failed to submit report');
+              } finally {
+                setReportSubmitting(false);
+              }
+            }} className="space-y-5">
                <div>
                   <label className="block text-[13px] font-semibold text-zinc-700 mb-2">Reason</label>
-                  <select className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-2.5 text-[14px] text-zinc-900 focus:outline-none focus:border-zinc-300 focus:ring-1 focus:ring-zinc-300 transition-shadow">
+                  <select
+                    value={reportReason}
+                    onChange={e => setReportReason(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-2.5 text-[14px] text-zinc-900 focus:outline-none focus:border-zinc-300 focus:ring-1 focus:ring-zinc-300 transition-shadow"
+                  >
                      <option>Inappropriate content</option>
                      <option>Spam or misleading</option>
                      <option>Harassment or hate speech</option>
@@ -506,22 +554,24 @@ export default function PodDetails() {
                </div>
                <div>
                   <label className="block text-[13px] font-semibold text-zinc-700 mb-2">Additional Details</label>
-                  <textarea 
-                    rows={4} 
+                  <textarea
+                    value={reportDetails}
+                    onChange={e => setReportDetails(e.target.value)}
+                    rows={4}
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-[14px] text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-zinc-300 focus:ring-1 focus:ring-zinc-300 transition-shadow resize-none"
                     placeholder="Provide more context..."
                   />
                </div>
-            </div>
             
             <div className="mt-8 flex gap-3">
-               <button onClick={() => setIsReportOpen(false)} className="flex-1 px-4 py-2.5 bg-white border border-zinc-200 text-zinc-700 text-[14px] font-medium rounded-lg hover:bg-zinc-50 transition-colors">
+               <button type="button" onClick={() => setIsReportOpen(false)} disabled={reportSubmitting} className="flex-1 px-4 py-2.5 bg-white border border-zinc-200 text-zinc-700 text-[14px] font-medium rounded-lg hover:bg-zinc-50 transition-colors disabled:opacity-50">
                  Cancel
                </button>
-               <button onClick={() => { setIsReportOpen(false); toast.success('Report submitted to Trust & Safety team.'); }} className="flex-1 px-4 py-2.5 bg-red-600 border border-red-600 text-white text-[14px] font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm focus:ring-2 focus:ring-red-600 focus:ring-offset-2">
-                 Submit Report
+               <button type="submit" disabled={reportSubmitting} className="flex-1 px-4 py-2.5 bg-red-600 border border-red-600 text-white text-[14px] font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm focus:ring-2 focus:ring-red-600 focus:ring-offset-2 disabled:opacity-50">
+                 {reportSubmitting ? 'Submitting...' : 'Submit Report'}
                </button>
             </div>
+            </form>
           </div>
         </div>
       )}

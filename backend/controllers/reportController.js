@@ -1,5 +1,10 @@
 import asyncHandler from 'express-async-handler';
+import mongoose from 'mongoose';
 import Report from '../models/Report.js';
+import User from '../models/User.js';
+import Pod from '../models/Pod.js';
+
+const isValidObjectId = (value) => value && /^[a-fA-F0-9]{24}$/.test(String(value));
 
 // @desc    Submit a new issue report
 // @route   POST /api/reports
@@ -15,6 +20,19 @@ const createReport = asyncHandler(async (req, res) => {
   if (!targetId || !reason) {
     res.status(400);
     throw new Error('targetId and reason are required fields');
+  }
+
+  if (!isValidObjectId(targetId)) {
+    res.status(400);
+    throw new Error('Invalid targetId');
+  }
+
+  const exists = targetType === 'user'
+    ? await User.exists({ _id: targetId })
+    : await Pod.exists({ _id: targetId });
+  if (!exists) {
+    res.status(404);
+    throw new Error('Target not found');
   }
 
   const report = await Report.create({
