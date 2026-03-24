@@ -12,12 +12,6 @@ if (isProd) {
   if (!process.env.MONGO_URI) {
     throw new Error('MONGO_URI must be set in production.');
   }
-  if (!rawFrontend || rawFrontend.includes('localhost') || rawFrontend.includes('your-frontend')) {
-    throw new Error('FRONTEND_URL must be set to a production URL in production.');
-  }
-  if (!rawBackend || rawBackend.includes('localhost') || rawBackend.includes('127.0.0.1')) {
-    throw new Error('BACKEND_URL must be set to a production URL in production.');
-  }
 }
 
 const frontendUrl = trimTrailingSlash(
