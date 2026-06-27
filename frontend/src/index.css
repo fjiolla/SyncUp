@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: #f4f7f3;
+  --color-primary-100: #e5ece3;
+  --color-primary-200: #ccdac8;
+  --color-primary-300: #a5c09e;
+  --color-primary-400: #7ba272;
+  --color-primary-500: #5a8450;
+  --color-primary-600: #4a6741;
+  --color-primary-700: #3b5335;
+  --color-primary-800: #32432d;
+  --color-primary-900: #2a3826;
+  --color-primary-950: #141d13;
+
+  --color-surface-50: #fafafa;
+  --color-surface-100: #f5f5f4;
+  --color-surface-200: #e7e5e4;
+  --color-surface-300: #d6d3d1;
+  --color-surface-400: #a8a29e;
+  --color-surface-500: #78716c;
+  --color-surface-600: #57534e;
+  --color-surface-700: #44403c;
+  --color-surface-800: #292524;
+  --color-surface-900: #1c1917;
+  --color-surface-950: #0c0a09;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-full: 9999px;
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.03);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.04), 0 2px 4px -2px rgb(0 0 0 / 0.03);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.04), 0 4px 6px -4px rgb(0 0 0 / 0.03);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.04), 0 8px 10px -6px rgb(0 0 0 / 0.03);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-white text-surface-900 font-sans;
+  }
+
+  * {
+    @apply border-surface-200;
+  }
+}
