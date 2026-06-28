@@ -128,13 +128,18 @@ export default function NotificationsPage() {
   }
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const subtitle = notifications.length === 0
+    ? 'All caught up'
+    : unreadCount > 0
+      ? `${unreadCount} unread`
+      : `${notifications.length} notification${notifications.length === 1 ? '' : 's'}`;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-surface-900">Notifications</h1>
-          <p className="mt-1 text-surface-500">{unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
+          <p className="mt-1 text-surface-500">{subtitle}</p>
         </div>
         {unreadCount > 0 && (
           <Button variant="secondary" size="sm" loading={markingAll} onClick={handleMarkAllRead}>

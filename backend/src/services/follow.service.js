@@ -3,11 +3,14 @@ import { NotificationService } from './notification.service.js';
 import { NotificationRepository } from '../repositories/notification.repository.js';
 import { UserRepository } from '../repositories/user.repository.js';
 import { ApiError } from '../exceptions/ApiError.js';
+import { logger } from '../logger/index.js';
 
 const notify = async (payload) => {
   try {
     await NotificationService.createNotification(payload);
-  } catch {}
+  } catch (err) {
+    logger.error({ err, type: payload?.type, recipient: payload?.recipient }, 'Failed to create notification');
+  }
 };
 
 const clearFollowRequestNotification = async (recipientId, senderId) => {
@@ -17,7 +20,9 @@ const clearFollowRequestNotification = async (recipientId, senderId) => {
       sender: senderId,
       type: 'follow_request',
     });
-  } catch {}
+  } catch (err) {
+    logger.error({ err, recipient: recipientId, sender: senderId }, 'Failed to clear follow_request notification');
+  }
 };
 
 export const FollowService = {
@@ -58,14 +63,17 @@ export const FollowService = {
   async acceptRequest(recipientId, requesterId) {
     const follow = await FollowRepository.findFollow(requesterId, recipientId);
     if (!follow) throw ApiError.notFound('Follow request not found');
+
+    // Always clear the stale follow_request notification, even if the follow
+    // was already accepted, so it doesn't keep reappearing on the recipient's feed.
+    await clearFollowRequestNotification(recipientId, requesterId);
+
     if (follow.status === 'accepted') return follow;
 
     await FollowRepository.model.updateOne(
       { _id: follow._id },
       { $set: { status: 'accepted', acceptedAt: new Date() } }
     );
-
-    await clearFollowRequestNotification(recipientId, requesterId);
 
     const accepter = await UserRepository.findById(recipientId).catch(() => null);
     await notify({
