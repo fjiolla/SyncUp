@@ -112,13 +112,13 @@ describe('Property 12: Pagination metadata calculation', () => {
           expect(res.statusCode).toBe(200);
           expect(res.body.success).toBe(true);
           expect(res.body.message).toBe(message);
-          expect(res.body.data).toEqual(data);
-          expect(res.body.pagination.page).toBe(page);
-          expect(res.body.pagination.limit).toBe(limit);
-          expect(res.body.pagination.total).toBe(total);
-          expect(res.body.pagination.totalPages).toBe(expectedTotalPages);
-          expect(res.body.pagination.hasNextPage).toBe(expectedHasNextPage);
-          expect(res.body.pagination.hasPrevPage).toBe(expectedHasPrevPage);
+          expect(res.body.data.results).toEqual(data);
+          expect(res.body.data.pagination.page).toBe(page);
+          expect(res.body.data.pagination.limit).toBe(limit);
+          expect(res.body.data.pagination.total).toBe(total);
+          expect(res.body.data.pagination.totalPages).toBe(expectedTotalPages);
+          expect(res.body.data.pagination.hasNextPage).toBe(expectedHasNextPage);
+          expect(res.body.data.pagination.hasPrevPage).toBe(expectedHasPrevPage);
         }
       ),
       { numRuns: 150 }

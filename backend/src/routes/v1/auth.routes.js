@@ -3,6 +3,7 @@ import passport from 'passport';
 import * as authController from '../../controllers/auth.controller.js';
 import { validate } from '../../middlewares/validate.js';
 import { protect } from '../../middlewares/auth.js';
+import { authRateLimiter } from '../../middlewares/rateLimiter.js';
 import {
   registerSchema,
   loginSchema,
@@ -14,14 +15,14 @@ import {
 
 const router = Router();
 
-router.post('/register', validate(registerSchema), authController.register);
-router.post('/login', validate(loginSchema), authController.login);
+router.post('/register', authRateLimiter, validate(registerSchema), authController.register);
+router.post('/login', authRateLimiter, validate(loginSchema), authController.login);
 router.post('/refresh-token', authController.refreshToken);
 router.post('/logout', protect, authController.logout);
 router.post('/send-verification-email', protect, authController.sendVerificationEmail);
 router.get('/verify-email/:token', authController.verifyEmail);
-router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);
-router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);
+router.post('/forgot-password', authRateLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
+router.post('/reset-password', authRateLimiter, validate(resetPasswordSchema), authController.resetPassword);
 router.get('/me', protect, authController.getProfile);
 router.patch('/me', protect, validate(updateProfileSchema), authController.updateProfile);
 router.post('/change-password', protect, validate(changePasswordSchema), authController.changePassword);

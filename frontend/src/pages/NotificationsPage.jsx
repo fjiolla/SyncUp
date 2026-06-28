@@ -38,16 +38,20 @@ export default function NotificationsPage() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
   const [actioningId, setActioningId] = useState(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
     const fetchNotifications = async () => {
+      setLoadError(false);
       try {
         const res = await notificationsApi.getAll({ page: 1, limit: 50 });
         setNotifications(res.data?.results || []);
-      } catch {}
+      } catch {
+        setLoadError(true);
+      }
       setLoading(false);
     };
     fetchNotifications();
@@ -161,6 +165,13 @@ export default function NotificationsPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="bg-white border border-surface-200 rounded-xl">
+          <EmptyState
+            message="Couldn't load notifications"
+            description="Something went wrong. Please try again."
+          />
         </div>
       ) : notifications.length === 0 ? (
         <div className="bg-white border border-surface-200 rounded-xl">

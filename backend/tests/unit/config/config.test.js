@@ -11,9 +11,6 @@ const VALID_ENV = {
   CLOUDINARY_API_KEY: '123456',
   CLOUDINARY_API_SECRET: 'secret123',
   SENDGRID_API_KEY: 'SG.test',
-  TWILIO_ACCOUNT_SID: 'AC123',
-  TWILIO_AUTH_TOKEN: 'authtoken',
-  TWILIO_PHONE_NUMBER: '+1234567890',
   CORS_ORIGIN: 'http://localhost:3000',
   LOG_LEVEL: 'info',
   JWT_ACCESS_SECRET: 'test-access-secret',
@@ -65,11 +62,11 @@ describe('Config Manager', () => {
     });
 
     it('should return error when env var is empty string', () => {
-      const env = makeEnv({ TWILIO_ACCOUNT_SID: '' });
+      const env = makeEnv({ CLOUDINARY_API_KEY: '' });
 
       const errors = validateEnv(env);
       const errorMsg = errors.join('\n');
-      expect(errorMsg).toContain('TWILIO_ACCOUNT_SID');
+      expect(errorMsg).toContain('CLOUDINARY_API_KEY');
     });
 
     it('should return no errors when all required vars are present and non-empty', () => {
@@ -213,7 +210,6 @@ describe('Config Manager', () => {
       expect(config).toHaveProperty('redis');
       expect(config).toHaveProperty('cloudinary');
       expect(config).toHaveProperty('email');
-      expect(config).toHaveProperty('sms');
       expect(config).toHaveProperty('cors');
       expect(config).toHaveProperty('rateLimit');
     });
@@ -258,14 +254,6 @@ describe('Config Manager', () => {
       expect(config.email.sendgridApiKey).toBe('SG.test');
     });
 
-    it('should have correct sms config', () => {
-      const config = buildConfig(makeEnv());
-
-      expect(config.sms.twilioAccountSid).toBe('AC123');
-      expect(config.sms.twilioAuthToken).toBe('authtoken');
-      expect(config.sms.twilioPhoneNumber).toBe('+1234567890');
-    });
-
     it('should have correct cors config', () => {
       const config = buildConfig(makeEnv());
 
@@ -276,7 +264,7 @@ describe('Config Manager', () => {
       const config = buildConfig(makeEnv());
 
       expect(config.rateLimit.windowMs).toBe(15 * 60 * 1000);
-      expect(config.rateLimit.max).toBe(100);
+      expect(config.rateLimit.max).toBe(600);
     });
 
     it('should use custom rate limit values from env', () => {

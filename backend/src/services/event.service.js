@@ -63,9 +63,6 @@ export const EventService = {
     if (event.status === 'cancelled') {
       throw ApiError.badRequest('This event has been cancelled');
     }
-    if (event.attendeeCount >= event.maxParticipants) {
-      throw ApiError.badRequest('This event is full');
-    }
     if (event.registrationDeadline && new Date() > new Date(event.registrationDeadline)) {
       throw ApiError.badRequest('Registration deadline has passed');
     }
@@ -75,22 +72,43 @@ export const EventService = {
       throw ApiError.conflict('You are already registered for this event');
     }
 
-    if (existing && existing.status === 'cancelled') {
-      await EventRegistrationRepository.model.findByIdAndUpdate(existing._id, { status: 'registered', registeredAt: new Date() });
-    } else {
-      await EventRegistrationRepository.create({ event: eventId, user: userId });
+    // Atomically reserve a slot. Returns null if the event is full or cancelled,
+    // which guarantees we never increment past maxParticipants under concurrency.
+    const reserved = await EventRepository.reserveSlot(eventId);
+    if (!reserved) {
+      throw ApiError.badRequest('This event is full');
     }
 
-    await EventRepository.incrementAttendeeCount(eventId);
+    try {
+      if (existing && existing.status === 'cancelled') {
+        await EventRegistrationRepository.model.findByIdAndUpdate(existing._id, { status: 'registered', registeredAt: new Date() });
+      } else {
+        await EventRegistrationRepository.create({ event: eventId, user: userId });
+      }
+    } catch (err) {
+      // Persisting the registration failed — release the reserved slot.
+      await EventRepository.decrementAttendeeCount(eventId);
+      if (err.code === 11000) {
+        throw ApiError.conflict('You are already registered for this event');
+      }
+      throw err;
+    }
+
     return { status: 'registered' };
   },
 
   async cancelRegistration(eventId, userId) {
-    const existing = await EventRegistrationRepository.findRegistration(eventId, userId);
-    if (!existing || existing.status !== 'registered') {
+    // Atomically flip the registration from 'registered' to 'cancelled'. Only the
+    // request that actually performs the transition decrements the counter, so
+    // concurrent cancellations can't double-decrement attendeeCount.
+    const updated = await EventRegistrationRepository.model.findOneAndUpdate(
+      { event: eventId, user: userId, status: 'registered' },
+      { status: 'cancelled' },
+      { new: true }
+    );
+    if (!updated) {
       throw ApiError.badRequest('You are not registered for this event');
     }
-    await EventRegistrationRepository.model.findByIdAndUpdate(existing._id, { status: 'cancelled' });
     await EventRepository.decrementAttendeeCount(eventId);
     return { status: 'cancelled' };
   },

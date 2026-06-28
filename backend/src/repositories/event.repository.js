@@ -63,8 +63,32 @@ class EventRepositoryClass extends BaseRepository {
     return this.model.findByIdAndUpdate(eventId, { $inc: { attendeeCount: 1 } }, { new: true });
   }
 
+  /**
+   * Atomically reserves a capacity slot. The increment only applies if the
+   * event is not cancelled and still has room, preventing overbooking under
+   * concurrent registrations. Returns the updated event, or null if full.
+   */
+  async reserveSlot(eventId) {
+    return this.model.findOneAndUpdate(
+      {
+        _id: eventId,
+        deletedAt: null,
+        status: { $ne: 'cancelled' },
+        $expr: { $lt: ['$attendeeCount', '$maxParticipants'] },
+      },
+      { $inc: { attendeeCount: 1 } },
+      { new: true }
+    );
+  }
+
   async decrementAttendeeCount(eventId) {
-    return this.model.findByIdAndUpdate(eventId, { $inc: { attendeeCount: -1 } }, { new: true });
+    // Guard against the count going negative if a decrement is ever called
+    // without a matching active registration.
+    return this.model.findOneAndUpdate(
+      { _id: eventId, attendeeCount: { $gt: 0 } },
+      { $inc: { attendeeCount: -1 } },
+      { new: true }
+    );
   }
 
   async findByDateRange(startDate, endDate, filter = {}) {
